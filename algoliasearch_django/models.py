@@ -457,7 +457,8 @@ class AlgoliaIndex(object):
                     self.settings['slaves'] = []
                     logger.debug("REMOVE SLAVES FROM SETTINGS")
 
-                self.__tmp_index.wait_task(self.__tmp_index.set_settings(self.settings)['taskID'])
+                self.__tmp_index.wait_task(self.__tmp_index.set_settings(
+                    self.settings, forward_to_slaves=False, forward_to_replicas=False)['taskID'])
                 logger.debug('APPLY SETTINGS ON %s_tmp', self.index_name)
             rules = []
             synonyms = []
@@ -512,13 +513,14 @@ class AlgoliaIndex(object):
                     self.settings['slaves'] = slaves
                     logger.debug("RESTORE SLAVES")
                 if should_keep_replicas or should_keep_slaves:
-                    self.__index.set_settings(self.settings)
+                    self.__index.set_settings(
+                        self.settings, forward_to_slaves=False, forward_to_replicas=False)
                 if should_keep_rules:
-                    response = self.__index.batch_rules(rules, forward_to_replicas=True)
+                    response = self.__index.batch_rules(rules, forward_to_replicas=False)
                     self.__index.wait_task(response['taskID'])
                     logger.info("Saved rules for index %s with response: {}".format(response), self.index_name)
                 if should_keep_synonyms:
-                    response = self.__index.batch_synonyms(synonyms, forward_to_replicas=True)
+                    response = self.__index.batch_synonyms(synonyms, forward_to_slaves=False, forward_to_replicas=False)
                     self.__index.wait_task(response['taskID'])
                     logger.info("Saved synonyms for index %s with response: {}".format(response), self.index_name)
             return counts
