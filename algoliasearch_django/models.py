@@ -6,7 +6,8 @@ from itertools import chain
 import logging
 
 import sys
-from algoliasearch.helpers import AlgoliaException
+import json
+from algoliasearch.helpers import AlgoliaException, CustomJSONEncoder
 from django.db.models.query_utils import DeferredAttribute
 
 from .settings import DEBUG
