@@ -281,6 +281,18 @@ class AlgoliaIndex(object):
                     instance.__class__.__name__, self.should_index))
             return attr_value
 
+    def optimise_obj(self, obj):
+        if 'search_index_description' in obj:
+            dumped_object = json.dumps(obj, cls=CustomJSONEncoder)
+
+            size = sys.getsizeof(dumped_object)
+            while size > 100000:
+                obj['search_index_description'] = obj['search_index_description'][
+                                                  :len(obj['search_index_description']) - 100]
+                dumped_object = json.dumps(obj, cls=CustomJSONEncoder)
+                size = sys.getsizeof(dumped_object)
+        return obj
+
     def save_record(self, instance, update_fields=None, **kwargs):
         """Saves the record.
 
@@ -308,6 +320,19 @@ class AlgoliaIndex(object):
             logger.info('SAVE %s FROM %s', obj['objectID'], self.model)
             return result
         except AlgoliaException as e:
+            if 'Record is too big' in str(e):
+                if update_fields:
+                    obj = self.get_raw_record(instance,
+                                              update_fields=update_fields)
+                    obj = self.optimise_obj(obj)
+                    result = self.__index.partial_update_object(obj)
+                else:
+                    obj = self.get_raw_record(instance)
+                    obj = self.optimise_obj(obj)
+                    result = self.__index.save_object(obj)
+                logger.info('SAVE %s FROM %s', obj['objectID'], self.model)
+                return result
+
             if DEBUG:
                 raise e
             else:
