@@ -321,7 +321,7 @@ class AlgoliaIndex(object):
             logger.info('SAVE %s FROM %s', obj['objectID'], self.model)
             return result
         except AlgoliaException as e:
-            if 'Record is too big' in str(e):
+            if 'Record is too big' in str(e) or 'is too big size=' in str(e):
                 if update_fields:
                     obj = self.get_raw_record(instance,
                                               update_fields=update_fields)
