@@ -6,7 +6,8 @@ from itertools import chain
 import logging
 
 import sys
-from algoliasearch.helpers import AlgoliaException
+import json
+from algoliasearch.helpers import AlgoliaException, CustomJSONEncoder
 from django.db.models.query_utils import DeferredAttribute
 
 from .settings import DEBUG
@@ -281,6 +282,18 @@ class AlgoliaIndex(object):
                     instance.__class__.__name__, self.should_index))
             return attr_value
 
+    def optimise_obj(self, obj):
+        if 'search_index_description' in obj:
+            dumped_object = json.dumps(obj, cls=CustomJSONEncoder)
+
+            size = sys.getsizeof(dumped_object)
+            while size > 100000:
+                obj['search_index_description'] = obj['search_index_description'][
+                                                  :len(obj['search_index_description']) - 100]
+                dumped_object = json.dumps(obj, cls=CustomJSONEncoder)
+                size = sys.getsizeof(dumped_object)
+        return obj
+
     def save_record(self, instance, update_fields=None, **kwargs):
         """Saves the record.
 
@@ -308,6 +321,19 @@ class AlgoliaIndex(object):
             logger.info('SAVE %s FROM %s', obj['objectID'], self.model)
             return result
         except AlgoliaException as e:
+            if 'Record is too big' in str(e) or 'is too big size=' in str(e):
+                if update_fields:
+                    obj = self.get_raw_record(instance,
+                                              update_fields=update_fields)
+                    obj = self.optimise_obj(obj)
+                    result = self.__index.partial_update_object(obj)
+                else:
+                    obj = self.get_raw_record(instance)
+                    obj = self.optimise_obj(obj)
+                    result = self.__index.save_object(obj)
+                logger.info('SAVE %s FROM %s', obj['objectID'], self.model)
+                return result
+
             if DEBUG:
                 raise e
             else:
@@ -457,7 +483,8 @@ class AlgoliaIndex(object):
                     self.settings['slaves'] = []
                     logger.debug("REMOVE SLAVES FROM SETTINGS")
 
-                self.__tmp_index.wait_task(self.__tmp_index.set_settings(self.settings)['taskID'])
+                self.__tmp_index.wait_task(self.__tmp_index.set_settings(
+                    self.settings, forward_to_slaves=False, forward_to_replicas=False)['taskID'])
                 logger.debug('APPLY SETTINGS ON %s_tmp', self.index_name)
             rules = []
             synonyms = []
@@ -512,13 +539,14 @@ class AlgoliaIndex(object):
                     self.settings['slaves'] = slaves
                     logger.debug("RESTORE SLAVES")
                 if should_keep_replicas or should_keep_slaves:
-                    self.__index.set_settings(self.settings)
+                    self.__index.set_settings(
+                        self.settings, forward_to_slaves=False, forward_to_replicas=False)
                 if should_keep_rules:
-                    response = self.__index.batch_rules(rules, forward_to_replicas=True)
+                    response = self.__index.batch_rules(rules, forward_to_replicas=False)
                     self.__index.wait_task(response['taskID'])
                     logger.info("Saved rules for index %s with response: {}".format(response), self.index_name)
                 if should_keep_synonyms:
-                    response = self.__index.batch_synonyms(synonyms, forward_to_replicas=True)
+                    response = self.__index.batch_synonyms(synonyms, forward_to_slaves=False, forward_to_replicas=False)
                     self.__index.wait_task(response['taskID'])
                     logger.info("Saved synonyms for index %s with response: {}".format(response), self.index_name)
             return counts
